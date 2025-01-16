@@ -8,29 +8,35 @@ from medmnist.dataset import BreastMNIST, BloodMNIST
 from torch.optim import lr_scheduler
 import matplotlib.pyplot as plt
 import os
+from sklearn.metrics import roc_auc_score
 
 
 # Define a simple CNN model
 class SimpleCNN(nn.Module):
-    def __init__(self, image_size=50):
+    def __init__(self, image_size=50, num_classes=8):
         super(SimpleCNN, self).__init__()
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
             nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
         )
         self.fc_layers = nn.Sequential(
             nn.Linear(64 * (image_size // 8) * (image_size // 8), 128),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, 1),
-            nn.Sigmoid(),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_classes),
         )
 
     def forward(self, x):
@@ -40,7 +46,7 @@ class SimpleCNN(nn.Module):
         return x
 
 class BloodMNIST_Classifier:
-    def __init__(self):
+    def __init__(self, model_name=None):
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # BloodMNIST dataset info
@@ -75,7 +81,7 @@ class BloodMNIST_Classifier:
         )
         self.image_size = self.train_dataset[0][0].shape[1]
 
-        self.batch_size = 16
+        self.batch_size = 64
         self.train_loader = DataLoader(
             dataset=self.train_dataset, batch_size=self.batch_size, shuffle=True
         )
@@ -86,8 +92,9 @@ class BloodMNIST_Classifier:
             dataset=self.test_dataset, batch_size=self.batch_size, shuffle=False
         )
         # Initialize model, loss, optimizer, scheduler
-        self.model = SimpleCNN(self.image_size).to(self.device)
-        self.criterion = nn.BCELoss()
+        self.model_name = model_name
+        self.model = SimpleCNN(self.image_size, self.n_classes).to(self.device)
+        self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(
             self.model.parameters(), lr=0.001, weight_decay=1e-5
         )
@@ -107,7 +114,8 @@ class BloodMNIST_Classifier:
         correct = 0
         total = 0
         for images, labels in self.train_loader:
-            images, labels = images.to(self.device), labels.to(self.device).float()
+            labels = labels.squeeze(1)
+            images, labels = images.to(self.device), labels.to(self.device).long()
             self.optimizer.zero_grad()
             outputs = self.model(images)
             loss = self.criterion(outputs, labels)
@@ -115,7 +123,8 @@ class BloodMNIST_Classifier:
             self.optimizer.step()
             running_loss += loss.item()
 
-            predicted = (outputs > 0.5).float()
+            predicted = torch.argmax(outputs, dim=1)
+
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
         return running_loss / len(self.train_loader)
@@ -127,17 +136,20 @@ class BloodMNIST_Classifier:
         total = 0
         with torch.no_grad():
             for images, labels in self.val_loader:
-                images, labels = images.to(self.device), labels.to(self.device).float()
+                labels = labels.squeeze(1)
+                images, labels = images.to(self.device), labels.to(self.device).long()
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)
                 running_loss += loss.item()
-                predicted = (outputs > 0.5).float()
+                predicted = torch.argmax(outputs, dim=1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
         accuracy = 100 * correct / total
         return running_loss / len(self.val_loader), accuracy
 
     def train_model(self):
+        best_val_loss = float("inf")
+        counter = 0
         for epoch in range(self.num_epochs):
             train_loss = self.train()
             val_loss, val_accuracy = self.validate()
@@ -155,7 +167,7 @@ class BloodMNIST_Classifier:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 counter = 0
-                torch.save(self.model.state_dict(), "best_model.pth")  # save best model
+                torch.save(self.model.state_dict(), "best_model_B.pth")  # save best model
                 print("Validation loss improved. Saving model...")
             else:
                 counter += 1
@@ -166,27 +178,62 @@ class BloodMNIST_Classifier:
                     print("Early stopping triggered. Stopping training.")
                     break
 
-    def evaluate(self):
+    def test(self):
         # Load the best model
         self.model.load_state_dict(torch.load("best_model.pth"))
 
-        # Evaluate on test set
         self.model.eval()
         running_loss = 0.0
         correct = 0
         total = 0
+        all_outputs = []
+        all_labels = []
         with torch.no_grad():
             for images, labels in self.test_loader:
-                images, labels = images.to(self.device), labels.to(self.device).float()
+                labels = labels.squeeze(1)
+                images, labels = images.to(self.device), labels.to(self.device).long()
+
+                # Model forward pass
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)
+
+                # Accumulate metrics
                 running_loss += loss.item()
-                predicted = (outputs > 0.5).float()
-                total += labels.size(0)
+                predicted = torch.argmax(outputs, dim=1)
                 correct += (predicted == labels).sum().item()
+                total += labels.size(0)
+
+                # Collect all outputs and labels
+                all_outputs.append(outputs.cpu())
+                all_labels.append(labels.cpu())
+        # Concatenate all collected outputs and labels
+        all_outputs = torch.cat(all_outputs, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
+
+        # Convert labels to one-hot encoding
+        y_true_one_hot = torch.eye(self.n_classes)[all_labels]
+
+        # Calculate AUC per class
+        auc_scores = []
+        for i in range(self.n_classes):
+            auc = roc_auc_score(
+                y_true_one_hot[:, i].numpy(),
+                all_outputs[:, i].numpy()
+            )
+            auc_scores.append(auc)
+
+        # Macro-Averaged AUC
+        macro_auc = sum(auc_scores) / self.n_classes
         test_loss = running_loss / len(self.test_loader)
         test_accuracy = 100 * correct / total
-        print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
+        # write results to a file
+        if not os.path.exists("B/results"):
+            os.makedirs("B/results")
+        with open(f"B/results/{self.model_name}_results.txt", "a") as f:
+            f.write(
+                f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%, Macro-AUC: {macro_auc:.4f}\n"
+            )
+        print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%, Macro-AUC: {macro_auc:.4f}")
 
     def plot_curves(self):
         # Plotting the training and validation loss curves
@@ -198,6 +245,10 @@ class BloodMNIST_Classifier:
         plt.ylabel("Loss")
         plt.title("Training and Validation Loss")
         plt.legend()
+        # save plots
+        if not os.path.exists("B/plots"):
+            os.makedirs("B/plots")
+        plt.savefig(f"B/plots/loss_{self.model_name}.png")
         plt.show()
 
         # Plotting the validation accuracy curve
@@ -207,4 +258,5 @@ class BloodMNIST_Classifier:
         plt.ylabel("Accuracy")
         plt.title("Validation Accuracy")
         plt.legend()
+        plt.savefig(f"B/plots/validation_accuracy_{self.model_name}.png")
         plt.show()

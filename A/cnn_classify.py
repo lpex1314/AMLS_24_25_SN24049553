@@ -8,6 +8,7 @@ from medmnist.dataset import BreastMNIST
 from torch.optim import lr_scheduler
 import matplotlib.pyplot as plt
 import os
+from sklearn.metrics import roc_auc_score
 
 
 # Define a simple CNN model
@@ -16,19 +17,25 @@ class SimpleCNN(nn.Module):
         super(SimpleCNN, self).__init__()
         self.conv_layers = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
             nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout(0.15),
         )
         self.fc_layers = nn.Sequential(
             nn.Linear(64 * (image_size // 8) * (image_size // 8), 128),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.4),
             nn.Linear(128, 1),
             nn.Sigmoid(),
         )
@@ -41,7 +48,7 @@ class SimpleCNN(nn.Module):
 
 
 class BreastMNIST_Classifier:
-    def __init__(self):
+    def __init__(self, model_name=None):
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # BreastMNIST dataset info
@@ -87,6 +94,7 @@ class BreastMNIST_Classifier:
             dataset=self.test_dataset, batch_size=self.batch_size, shuffle=False
         )
         # Initialize model, loss, optimizer, scheduler
+        self.model_name = model_name
         self.model = SimpleCNN(self.image_size).to(self.device)
         self.criterion = nn.BCELoss()
         self.optimizer = optim.Adam(
@@ -142,6 +150,8 @@ class BreastMNIST_Classifier:
         return running_loss / len(self.val_loader), accuracy
 
     def train_model(self):
+        best_val_loss = float("inf")
+        counter = 0
         for epoch in range(self.num_epochs):
             train_loss = self.train()
             val_loss, val_accuracy = self.validate()
@@ -170,18 +180,19 @@ class BreastMNIST_Classifier:
                     print("Early stopping triggered. Stopping training.")
                     break
 
-    def evaluate(self):
+    def test(self):
         # Load the best model
-        self.model.load_state_dict(torch.load("best_model.pth"))
+        self.model.load_state_dict(torch.load("best_model_A.pth"))
 
         # Evaluate on test set
         self.model.eval()
         running_loss = 0.0
         correct = 0
         total = 0
+        all_outputs = []
+        all_labels = []
         with torch.no_grad():
             for images, labels in self.test_loader:
-
                 images, labels = images.to(self.device), labels.to(self.device).float()
                 outputs = self.model(images)
                 loss = self.criterion(outputs, labels)
@@ -189,9 +200,17 @@ class BreastMNIST_Classifier:
                 predicted = (outputs > 0.5).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
+                all_outputs += outputs.cpu().numpy().tolist()
+                all_labels += labels.cpu().numpy().tolist()
+        auc = roc_auc_score(all_labels, all_outputs)
         test_loss = running_loss / len(self.test_loader)
         test_accuracy = 100 * correct / total
-        print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
+        # write results to file without overwriting
+        if not os.path.exists("A/results"):
+            os.makedirs("A/results")
+        with open(f"A/results/{self.model_name}_results.txt", "a") as f:
+            f.write(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%, AUC: {auc:.4f}\n")
+        print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%, AUC: {auc:.4f}")
 
     def plot_curves(self):
         # Plotting the training and validation loss curves
@@ -203,6 +222,9 @@ class BreastMNIST_Classifier:
         plt.ylabel("Loss")
         plt.title("Training and Validation Loss")
         plt.legend()
+        if not os.path.exists("A/plots"):
+            os.makedirs("A/plots")
+        plt.savefig(f"A/plots/loss_{self.model_name}.png")
         plt.show()
 
         # Plotting the validation accuracy curve
@@ -212,4 +234,5 @@ class BreastMNIST_Classifier:
         plt.ylabel("Accuracy")
         plt.title("Validation Accuracy")
         plt.legend()
+        plt.savefig(f"A/plots/valiadation_accuracy_{self.model_name}.png")
         plt.show()

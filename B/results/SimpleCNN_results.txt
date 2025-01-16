@@ -1,0 +1,5 @@
+Test Loss: 0.1862, Test Accuracy: 93.60%, Macro-AUC: 0.9873
+Test Loss: 0.1730, Test Accuracy: 94.21%, Macro-AUC: 0.9880
+Test Loss: 0.1654, Test Accuracy: 94.12%, Macro-AUC: 0.9893
+Test Loss: 0.1747, Test Accuracy: 93.95%, Macro-AUC: 0.9874
+Test Loss: 0.1616, Test Accuracy: 94.24%, Macro-AUC: 0.9881

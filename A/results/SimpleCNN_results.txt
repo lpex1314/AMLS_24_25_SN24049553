@@ -1,0 +1,5 @@
+Test Loss: 0.3834, Test Accuracy: 84.62%, AUC: 0.8645
+Test Loss: 0.3491, Test Accuracy: 85.26%, AUC: 0.8981
+Test Loss: 0.3651, Test Accuracy: 83.33%, AUC: 0.8924
+Test Loss: 0.3652, Test Accuracy: 85.26%, AUC: 0.8795
+Test Loss: 0.3287, Test Accuracy: 87.82%, AUC: 0.9060

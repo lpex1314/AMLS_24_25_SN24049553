@@ -1,2 +1,2 @@
 Datasets/*.npz
-.pth
+*.pth

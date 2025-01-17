@@ -4,6 +4,8 @@ Welcome to the AMLS_24_25_SN24049553 project! This project aims to perform class
 
 ## Key Features
 - Feature 1: cnn_classify.py in A/ and B/ directory, which contains the code for network structure and classifier.
+- Feature 2: main.py, which is the entrance to execute model training workflow, for readers to manipulate.
+- Feature 3: requirements.txt, containing required libraries and packages for this project.
 
 ## Getting Started
 To get started with this project, follow the instructions below:

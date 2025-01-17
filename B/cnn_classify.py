@@ -52,7 +52,7 @@ class BloodMNIST_Classifier:
         # BloodMNIST dataset info
         self.data_flag = "bloodmnist"
         self.download = True
-        self.dataset_dir = "Datasets/"
+        self.dataset_dir = "Datasets/BloodMNIST/"
         self.info = INFO[self.data_flag]
         self.task = self.info["task"]
         self.n_channels = self.info["n_channels"]

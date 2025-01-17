@@ -1,2 +1,2 @@
-Datasets/*.npz
+Datasets/*/*.npz
 *.pth

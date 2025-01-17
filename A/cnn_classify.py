@@ -54,7 +54,7 @@ class BreastMNIST_Classifier:
         # BreastMNIST dataset info
         self.data_flag = "breastmnist"
         self.download = True
-        self.dataset_dir = "Datasets/"
+        self.dataset_dir = "Datasets/BreastMNIST/"
         self.info = INFO[self.data_flag]
         self.task = self.info["task"]
         self.n_channels = self.info["n_channels"]
